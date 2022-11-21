@@ -1,0 +1,147 @@
+https://github.com/lazychaser/laravel-nestedset
+composer require kalnoy/nestedset
+---------------------------------------------------
+https://github.com/darryldecode/laravelshoppingcart
+composer require "darryldecode/cart"
+Open config/app.php and add this line to your Service Providers Array.
+Darryldecode\Cart\CartServiceProvider::class
+Open config/app.php and add this line to your Aliases
+  'Cart' => Darryldecode\Cart\Facades\CartFacade::class
+Optional configuration file (useful if you plan to have full control)
+php artisan vendor:publish --provider="Darryldecode\Cart\CartServiceProvider" --tag="config"
+------------------------------------------------------
+https://image.intervention.io/v2/introduction/installation
+php composer.phar require intervention/image
+Intervention\Image\ImageServiceProvider::class
+php artisan config:publish intervention/image
+--------------------------------------------------------
+https://docs.laravel-excel.com/3.1/getting-started/installation.html
+composer require maatwebsite/excel
+'providers' => [
+    /*
+     * Package Service Providers...
+     */
+    Maatwebsite\Excel\ExcelServiceProvider::class,
+]
+'aliases' => [
+    ...
+    'Excel' => Maatwebsite\Excel\Facades\Excel::class,
+]
+php artisan vendor:publish --provider="Maatwebsite\Excel\ExcelServiceProvider" --tag=config
+------------------------------------------------------
+https://lyften.com/projects/laravel-currency/doc/
+composer require torann/currency
+'providers' => [
+    \Torann\Currency\CurrencyServiceProvider::class,
+]
+'aliases' => [
+    'Currency' => \Torann\Currency\Facades\Currency::class,
+];
+php artisan vendor:publish --provider="Torann\Currency\CurrencyServiceProvider" --tag=config
+php artisan vendor:publish --provider="Torann\Currency\CurrencyServiceProvider" --tag=migrations
+php artisan migrate
+Open up app/Http/Kernel.php and find the $middleware variable.
+protected $middleware = [
+    \Torann\Currency\Middleware\CurrencyMiddleware::class,
+]
+
+php artisan currency:update -r
+
+/var/www/html/myshop/vendor/torann/currency/src/Console/Update.php
+
+protected $signature = 'currency:update
+    ...
+    {--b|bnr : Get rates from Banca Naţională a României}
+    {--r|exchangerates : Get rates from exchangerate.host}';
+
+    public function handle()
+    {
+        ...
+        if ($this->input->getOption('bnr')) {
+            // Get rates from bnr
+            return $this->updateFromBnr();
+        }
+
+        if ($this->input->getOption('exchangerates')) {
+            // Get rates from exchangerates.host
+            return $this->updateFromExchangerate($defaultCurrency);
+        }
+        ....
+    }
+
+    /**
+     * Fetch rates from Google Finance
+     *
+     * @param $defaultCurrency
+     */
+    private function updateFromBnr()
+    {
+        $this->info('Updating currency exchange rates from Bnr...');
+
+        foreach ($this->currency->getDriver()->all() as $code => $value) {
+            // Don't update the default currency, the value is always 1
+            if ($code === 'RON') {
+                continue;
+            }
+
+            $response = $this->request('https://www.bnr.ro/nbrfxrates.xml');
+            $xml = simplexml_load_string($response);
+            //$xml = simplexml_load_file('http://myshop.test/nbrfxrates.xml');
+
+            if($xml !== false)
+            {
+                foreach($xml->Body->Cube->Rate as $rate)
+                {
+                    if($rate[0]->attributes()->currency == $code)
+                    {
+                        $exchange_rate = round(1/$rate[0],5);
+                        if($code == $this->currency->config('default'))
+                            $exchange_rate = 1;
+                        $this->currency->getDriver()->update($code, [
+                            'exchange_rate' => $exchange_rate,
+                        ]);
+                    }
+                }
+            } else {
+                $this->warn('Can\'t update rate for ' . $code);
+                continue;
+            }
+        }
+    }
+
+    /**
+     * Fetch rates from https://exchangerate.host/
+     *
+     * @param $defaultCurrency
+     */
+    private function updateFromExchangerate($defaultCurrency)
+    {
+        $this->info('Updating currency exchange rates from exchangerate.host...');
+
+        $req_url = 'https://api.exchangerate.host/latest?base='.$defaultCurrency;
+        $response_json = file_get_contents($req_url);
+        if(false !== $response_json)
+        {
+            try
+            {
+                $response = json_decode($response_json,true);
+                if($response['success'] === true)
+                {
+                    foreach ($response['rates'] as $code => $value)
+                    {
+                        if ($code === $defaultCurrency)
+                            $value = 1;
+                        $this->currency->getDriver()->update($code, [
+                            'exchange_rate' => $value
+                        ]);
+                    }
+                }
+                $this->currency->clearCache();
+                $this->info('Currencies updated');
+            }
+            catch(Exception $e)
+            {
+                $this->warn('Can\'t update rates');
+            }
+        }
+    }

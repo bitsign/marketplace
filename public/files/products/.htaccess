@@ -1,0 +1,2 @@
+#URLs can begin with a slash (/) for local web-paths (relative to the DocumentRoot)
+ErrorDocument 404 /files/products/image_handler.php
